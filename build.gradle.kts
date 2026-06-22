@@ -26,13 +26,14 @@ dependencies {
     runtimeOnly("org.lwjgl", "lwjgl-opengl",   classifier = "natives-$lwjglNatives")
     runtimeOnly("org.lwjgl", "lwjgl-stb",      classifier = "natives-$lwjglNatives")
 
-    implementation(files("C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.6.jar"))
+    implementation(files("C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.7.jar"))
     implementation("org.joml:joml:1.10.5")
 
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
+    testImplementation("io.github.spair:imgui-java-binding:$imguiVersion")
     testImplementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion"){
         exclude(group = "org.lwjgl")
     }

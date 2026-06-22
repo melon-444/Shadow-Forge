@@ -97,4 +97,8 @@ void main() {
         texColor = texture(textureSampler, a_uv);
     }
     fragColor = texColor * vec4(colorSum, 1.0);
+    //fragColor = vec4(1.0,0.0,0.0,1.0);
+    //fragColor = texColor;
+    //fragColor = vec4(ambientColor, 1.0);
+    //fragColor = vec4(colorSum, 1.0);
 }
