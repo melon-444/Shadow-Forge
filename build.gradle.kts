@@ -1,54 +1,79 @@
 plugins {
-    id("java-library")
+    id("application")
 }
 
 group = "com.melon.ShadowForge"
-version = "0.0.1-SNAPSHOT"
+version = "0.0.1"
 
 val lwjglNatives = project.properties["lwjglNatives"] as? String ?: "windows"
-val lwjglUseMaven = project.properties["lwjglUseMaven"] == "true"
 val lwjglVersion = "3.4.1"
 val imguiVersion = "1.92.0"
+val foolsEnginePath = project.properties["foolsEngineJar"] as? String
+    ?: "C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.7.jar"
+
+application {
+    mainClass.set("com.melon.ShadowForge.ShadowForge")
+}
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-
-    api(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
-    api("org.lwjgl", "lwjgl")
-    api("org.lwjgl", "lwjgl-glfw")
-    api("org.lwjgl", "lwjgl-opengl")
-    api("org.lwjgl", "lwjgl-stb")
+    implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
+    implementation("org.lwjgl", "lwjgl")
+    implementation("org.lwjgl", "lwjgl-glfw")
+    implementation("org.lwjgl", "lwjgl-opengl")
+    implementation("org.lwjgl", "lwjgl-stb")
     runtimeOnly("org.lwjgl", "lwjgl",          classifier = "natives-$lwjglNatives")
     runtimeOnly("org.lwjgl", "lwjgl-glfw",     classifier = "natives-$lwjglNatives")
     runtimeOnly("org.lwjgl", "lwjgl-opengl",   classifier = "natives-$lwjglNatives")
     runtimeOnly("org.lwjgl", "lwjgl-stb",      classifier = "natives-$lwjglNatives")
 
-    implementation(files("C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.7.jar"))
+    implementation(files(foolsEnginePath))
     implementation("org.joml:joml:1.10.5")
 
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
-    testImplementation("io.github.spair:imgui-java-binding:$imguiVersion")
-    testImplementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion"){
+    implementation("io.github.spair:imgui-java-binding:$imguiVersion")
+    implementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
         exclude(group = "org.lwjgl")
     }
-    testRuntimeOnly("io.github.spair:imgui-java-natives-$lwjglNatives:$imguiVersion")
-
+    runtimeOnly("io.github.spair:imgui-java-natives-$lwjglNatives:$imguiVersion")
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks.register<Copy>("copyShaders") {
+    from("src/main/resources/shader")
+    into(layout.buildDirectory.dir("dist/shader"))
 }
 
-tasks.register<JavaExec>("run") {
-    dependsOn(tasks.compileTestJava)
-    group = "application"
-    description = "Runs ShadowForge terrain renderer"
-    mainClass.set("com.melon.ShadowForge.ShadowForge")
-    classpath = sourceSets["test"].runtimeClasspath
+tasks.register<Copy>("copyDepthMaps") {
+    from("depth_maps")
+    into(layout.buildDirectory.dir("dist/depth_maps"))
+    doFirst {
+        val dir = file("depth_maps")
+        if (!dir.exists()) dir.mkdirs()
+    }
+}
+
+tasks.register<Jar>("fatJar") {
+    dependsOn(tasks.named("copyShaders"), tasks.named("copyDepthMaps"))
+    group = "build"
+    description = "Builds a fat JAR with all dependencies for exe4j"
+    archiveClassifier.set("all")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from(sourceSets.main.get().output)
+
+    from({
+        configurations.runtimeClasspath.get().filter { it.exists() && it.name.endsWith(".jar") }.map { zipTree(it) }
+    })
+
+    manifest {
+        attributes["Main-Class"] = "com.melon.ShadowForge.ShadowForge"
+    }
+}
+
+tasks.register("dist") {
+    dependsOn("fatJar")
+    group = "build"
+    description = "Builds fat JAR + copies shaders and depth_maps for distribution"
 }
