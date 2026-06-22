@@ -75,12 +75,22 @@ public class ShadowForge {
     private ImGuiContext imGuiContext;
     private ImGuiRenderer imGuiRenderer;
 
-    private List<float[]> editColors = new ArrayList<>();
-    private List<String> hexInputs = new ArrayList<>();
-    private List<float[]> editDirections = new ArrayList<>();
-    private List<float[]> editPositions = new ArrayList<>();
-    private List<Float> editIntensities = new ArrayList<>();
-    private int selectedLight = -1;
+    private int nextLightId = 1;
+    private final IdentityHashMap<Light, Integer> lightIds = new IdentityHashMap<>();
+
+    static class LightEdit {
+        int id;
+        float[] color = new float[3];
+        String hex;
+        ImString hexBuf = new ImString(16);
+        float[] dir = new float[2];
+        float[] pos = new float[3];
+        float intensity;
+        boolean hexActive;
+        LightEdit(int id) { this.id = id; }
+    }
+    private final Map<Integer, LightEdit> edits = new LinkedHashMap<>();
+    private int selectedLightId = -1;
 
     private Vector3f initCameraPos = new Vector3f();
     private Vector3f initCameraTarget = new Vector3f();
@@ -100,7 +110,7 @@ public class ShadowForge {
     public void run() {
         WindowsManager manager = foolsEngine.serviceFactory.getWindowsManager();
         Window win = foolsEngine.mainWindow;
-        win.setTitle("ShadowForge - Step 3  |  P:Dir O:Point I:Spot ,:ShwDir .:ShwSpot U:Undo L:Clear  N:Next B:Prev ESC:Exit");
+        win.setTitle("ShadowForge  |  P:Dir O:Point I:Spot ,:ShwDir .:ShwSpot U:Undo L:Clear  N:Next B:Prev ESC:Exit");
         win.setSize(1024, 768);
 
         enumerateDepthMaps();
@@ -117,8 +127,8 @@ public class ShadowForge {
 
         ShaderProgram shader = foolsEngine.serviceFactory.getShaderProgram();
         shader.load(
-                Path.of("shader/vsh/main_vsh.glsl"),
-                Path.of("shader/fsh/main_fsh.glsl")
+                Path.of("src/main/resources/shader/vsh/main_vsh.glsl"),
+                Path.of("src/main/resources/shader/fsh/main_fsh.glsl")
         );
         material = new Material(shader);
 
@@ -131,8 +141,8 @@ public class ShadowForge {
 
         ShaderProgram dShader = foolsEngine.serviceFactory.getShaderProgram();
         dShader.load(
-                Path.of("shader/vsh/depth_vsh.glsl"),
-                Path.of("shader/fsh/depth_fsh.glsl")
+                Path.of("src/main/resources/shader/vsh/depth_vsh.glsl"),
+                Path.of("src/main/resources/shader/fsh/depth_fsh.glsl")
         );
         depthMaterial = new Material(dShader);
 
@@ -343,17 +353,26 @@ public class ShadowForge {
         ImGui.text(String.format("Light Count: %d", lights.size()));
 
         if (!lights.isEmpty()) {
-            for (int i = 0; i < lights.size(); i++) {
-                Light l = lights.get(i);
-                String label = String.format("[%d] %s%s",
-                        i, typeLabel(l.type), l.castsShadow() ? " (Shadow)" : "");
-                if (ImGui.selectable(label, selectedLight == i)) {
-                    selectedLight = (selectedLight == i) ? -1 : i;
+            for (Light l : lights) {
+                int id = lightIds.getOrDefault(l, 0);
+                LightEdit e = edits.get(id);
+                if (e == null) continue;
+                String label = String.format("#%d %s%s",
+                        id, typeLabel(l.type), l.castsShadow() ? " (Shadow)" : "");
+                if (ImGui.selectable(label, selectedLightId == id)) {
+                    selectedLightId = (selectedLightId == id) ? -1 : id;
                 }
             }
             ImGui.separator();
-            if (selectedLight >= 0 && selectedLight < lights.size()) {
-                renderLightEditor(lights, selectedLight);
+            if (selectedLightId > 0) {
+                LightEdit e = edits.get(selectedLightId);
+                Light selected = null;
+                for (Light l : lights) {
+                    if (lightIds.getOrDefault(l, 0) == selectedLightId) { selected = l; break; }
+                }
+                if (e != null && selected != null) {
+                    renderLightEditor(selected, e);
+                }
             }
         } else {
             ImGui.text("No lights. Press P/O/I/,/./ to add.");
@@ -381,107 +400,107 @@ public class ShadowForge {
         ImGui.end();
     }
 
-    private void renderLightEditor(List<Light> lights, int idx) {
-        Light l = lights.get(idx);
-        float[] col = editColors.get(idx);
-        float[] dir = editDirections.get(idx);
-        float[] pos = editPositions.get(idx);
-        float intensity = editIntensities.get(idx);
-        String sid = "##l" + idx;
+    private void renderLightEditor(Light l, LightEdit e) {
+        String sid = "##l" + e.id;
 
-        ImGui.text(String.format("Editing Light %d (%s)", idx, typeLabel(l.type)));
+        ImGui.text(String.format("Editing Light #%d (%s)", e.id, typeLabel(l.type)));
         ImGui.separator();
 
-        ImString hexBuf = new ImString(hexInputs.get(idx), 8);
-        if (ImGui.inputText("Hex Color" + sid, hexBuf, ImGuiInputTextFlags.CharsHexadecimal | ImGuiInputTextFlags.EnterReturnsTrue)) {
-            hexInputs.set(idx, hexBuf.get());
+        String storedHex = e.hex;
+        if (!storedHex.equals(e.hexBuf.get()) && !e.hexActive) {
+            e.hexBuf = new ImString(storedHex, 16);
         }
-        if (ImGui.isItemDeactivatedAfterEdit() || hexInputs.get(idx).replace("#", "").length() >= 6) {
-            float[] parsed = parseHex(hexInputs.get(idx));
+        if (ImGui.inputText("Hex Color" + sid, e.hexBuf, ImGuiInputTextFlags.CharsHexadecimal | ImGuiInputTextFlags.EnterReturnsTrue)) {
+            e.hex = e.hexBuf.get();
+            float[] parsed = parseHex(e.hex);
             if (parsed != null) {
-                col[0] = parsed[0]; col[1] = parsed[1]; col[2] = parsed[2];
-                hexInputs.set(idx, rgbToHex(col[0], col[1], col[2]));
-                replaceLight(idx);
+                e.color[0] = parsed[0]; e.color[1] = parsed[1]; e.color[2] = parsed[2];
+                replaceLight(l);
+            }
+        }
+        e.hexActive = ImGui.isItemActive();
+        if (ImGui.isItemDeactivatedAfterEdit()) {
+            e.hex = e.hexBuf.get();
+            float[] parsed = parseHex(e.hex);
+            if (parsed != null) {
+                e.color[0] = parsed[0]; e.color[1] = parsed[1]; e.color[2] = parsed[2];
+                e.hex = rgbToHex(e.color[0], e.color[1], e.color[2]);
+                replaceLight(l);
             }
         }
         ImGui.sameLine();
-        ImGui.colorButton("preview" + sid, new float[]{col[0], col[1], col[2], 1f});
+        ImGui.colorButton("preview" + sid, new float[]{e.color[0], e.color[1], e.color[2], 1f});
 
         boolean changed = false;
 
         if (l.type != LightType.POINT) {
-            ImFloat yawV = new ImFloat(dir[0]);
-            ImFloat pitchV = new ImFloat(dir[1]);
-            if (ImGui.inputFloat("Yaw" + sid, yawV)) { dir[0] = yawV.get(); changed = true; }
-            float[] yawSl = new float[]{dir[0]};
-            if (ImGui.sliderFloat("Yaw##sl" + sid, yawSl, -180f, 180f)) { dir[0] = yawSl[0]; changed = true; }
-            if (ImGui.inputFloat("Pitch" + sid, pitchV)) { dir[1] = pitchV.get(); changed = true; }
-            float[] piSl = new float[]{dir[1]};
-            if (ImGui.sliderFloat("Pitch##sl" + sid, piSl, -89f, 89f)) { dir[1] = piSl[0]; changed = true; }
+            ImFloat yawV = new ImFloat(e.dir[0]);
+            ImFloat pitchV = new ImFloat(e.dir[1]);
+            if (ImGui.inputFloat("Yaw" + sid, yawV)) { e.dir[0] = yawV.get(); changed = true; }
+            float[] yawSl = new float[]{e.dir[0]};
+            if (ImGui.sliderFloat("Yaw##sl" + sid, yawSl, -180f, 180f)) { e.dir[0] = yawSl[0]; changed = true; }
+            if (ImGui.inputFloat("Pitch" + sid, pitchV)) { e.dir[1] = pitchV.get(); changed = true; }
+            float[] piSl = new float[]{e.dir[1]};
+            if (ImGui.sliderFloat("Pitch##sl" + sid, piSl, -89f, 89f)) { e.dir[1] = piSl[0]; changed = true; }
         }
 
         if (l.type == LightType.POINT || l.type == LightType.SPOT) {
-            ImFloat xV = new ImFloat(pos[0]);
-            ImFloat yV = new ImFloat(pos[1]);
-            ImFloat zV = new ImFloat(pos[2]);
-            if (ImGui.inputFloat("Pos X" + sid, xV)) { pos[0] = xV.get(); changed = true; }
-            float[] xSl = new float[]{pos[0]};
-            if (ImGui.sliderFloat("Pos X##sl" + sid, xSl, -200f, 200f)) { pos[0] = xSl[0]; changed = true; }
-            if (ImGui.inputFloat("Pos Y" + sid, yV)) { pos[1] = yV.get(); changed = true; }
-            float[] ySl = new float[]{pos[1]};
-            if (ImGui.sliderFloat("Pos Y##sl" + sid, ySl, -200f, 200f)) { pos[1] = ySl[0]; changed = true; }
-            if (ImGui.inputFloat("Pos Z" + sid, zV)) { pos[2] = zV.get(); changed = true; }
-            float[] zSl = new float[]{pos[2]};
-            if (ImGui.sliderFloat("Pos Z##sl" + sid, zSl, -200f, 200f)) { pos[2] = zSl[0]; changed = true; }
+            ImFloat xV = new ImFloat(e.pos[0]);
+            ImFloat yV = new ImFloat(e.pos[1]);
+            ImFloat zV = new ImFloat(e.pos[2]);
+            if (ImGui.inputFloat("Pos X" + sid, xV)) { e.pos[0] = xV.get(); changed = true; }
+            float[] xSl = new float[]{e.pos[0]};
+            if (ImGui.sliderFloat("Pos X##sl" + sid, xSl, -200f, 200f)) { e.pos[0] = xSl[0]; changed = true; }
+            if (ImGui.inputFloat("Pos Y" + sid, yV)) { e.pos[1] = yV.get(); changed = true; }
+            float[] ySl = new float[]{e.pos[1]};
+            if (ImGui.sliderFloat("Pos Y##sl" + sid, ySl, -200f, 200f)) { e.pos[1] = ySl[0]; changed = true; }
+            if (ImGui.inputFloat("Pos Z" + sid, zV)) { e.pos[2] = zV.get(); changed = true; }
+            float[] zSl = new float[]{e.pos[2]};
+            if (ImGui.sliderFloat("Pos Z##sl" + sid, zSl, -200f, 200f)) { e.pos[2] = zSl[0]; changed = true; }
         }
 
-        ImFloat intensV = new ImFloat(intensity);
+        ImFloat intensV = new ImFloat(e.intensity);
         if (ImGui.inputFloat("Intensity" + sid, intensV)) {
-            editIntensities.set(idx, Math.max(0.01f, intensV.get()));
-            replaceLight(idx);
+            e.intensity = Math.max(0.01f, intensV.get());
+            replaceLight(l);
         }
-        float[] iSl = new float[]{editIntensities.get(idx)};
+        float[] iSl = new float[]{e.intensity};
         if (ImGui.sliderFloat("Intensity##sl" + sid, iSl, 0.01f, 20f)) {
-            editIntensities.set(idx, Math.max(0.01f, iSl[0]));
-            replaceLight(idx);
+            e.intensity = Math.max(0.01f, iSl[0]);
+            replaceLight(l);
         }
 
         if (changed) {
-            replaceLight(idx);
+            replaceLight(l);
         }
     }
 
-    private void replaceLight(int idx) {
-        List<Light> lights = new ArrayList<>(lightEnv.getLights());
-        if (idx >= lights.size()) return;
-        Light old = lights.get(idx);
-        float[] col = editColors.get(idx);
-        float[] dirAngles = editDirections.get(idx);
-        float[] pos = editPositions.get(idx);
-        float intensity = editIntensities.get(idx);
+    private void replaceLight(Light old) {
+        Integer id = lightIds.get(old);
+        if (id == null) return;
+        LightEdit e = edits.get(id);
+        if (e == null) return;
 
-        Vector3f color = new Vector3f(col[0], col[1], col[2]);
-        float yawR = Math.toRadians(dirAngles[0]);
-        float pitchR = Math.toRadians(dirAngles[1]);
+        Vector3f color = new Vector3f(e.color[0], e.color[1], e.color[2]);
+        float yawR = Math.toRadians(e.dir[0]);
+        float pitchR = Math.toRadians(e.dir[1]);
         Vector3f direction = new Vector3f(
                 Math.sin(yawR) * Math.cos(pitchR),
                 Math.sin(pitchR),
                 Math.cos(yawR) * Math.cos(pitchR)
         ).normalize();
-        Vector3f position = new Vector3f(pos[0], pos[1], pos[2]);
+        Vector3f position = new Vector3f(e.pos[0], e.pos[1], e.pos[2]);
 
         Light newLight;
         switch (old.type) {
             case PARALLEL:
-                newLight = Light.directional(color, direction, intensity);
+                newLight = Light.directional(color, direction, e.intensity);
                 break;
             case POINT:
-                newLight = Light.point(color, position, intensity);
+                newLight = Light.point(color, position, e.intensity);
                 break;
             case SPOT:
-                float inner = old.innerTheta;
-                float outer = old.outerTheta;
-                newLight = Light.spot(color, direction, position, inner, outer, intensity);
+                newLight = Light.spot(color, direction, position, old.innerTheta, old.outerTheta, e.intensity);
                 break;
             default:
                 return;
@@ -496,6 +515,10 @@ public class ShadowForge {
 
         lightEnv.remove(old);
         lightEnv.add(newLight);
+        lightIds.remove(old);
+        lightIds.put(newLight, id);
+        e.hex = rgbToHex(e.color[0], e.color[1], e.color[2]);
+        if (!e.hexActive) e.hexBuf = new ImString(e.hex, 16);
 
         replaceInStack(old, newLight);
     }
@@ -512,34 +535,20 @@ public class ShadowForge {
     }
 
     private void syncEditState(List<Light> lights) {
-        while (editColors.size() < lights.size()) {
-            int i = editColors.size();
-            Light l = lights.get(i);
-            editColors.add(new float[]{l.color.x, l.color.y, l.color.z});
-            hexInputs.add(rgbToHex(l.color.x, l.color.y, l.color.z));
-            editIntensities.add(l.intensity);
-
-            float yaw, pitch;
-            if (l.type == LightType.POINT) {
-                yaw = 0; pitch = 0;
-            } else {
-                Vector3f d = new Vector3f(l.direction).normalize();
-                yaw = (float) Math.toDegrees(Math.atan2(d.x, d.z));
-                pitch = (float) Math.toDegrees(Math.asin(Math.max(-1f, Math.min(1f, d.y))));
+        Set<Integer> activeIds = new HashSet<>();
+        for (Light l : lights) {
+            Integer id = lightIds.get(l);
+            if (id == null) {
+                id = nextLightId++;
+                lightIds.put(l, id);
             }
-            editDirections.add(new float[]{yaw, pitch});
-            editPositions.add(new float[]{l.position.x, l.position.y, l.position.z});
+            activeIds.add(id);
+            edits.computeIfAbsent(id, LightEdit::new);
+            syncEditFromLight(edits.get(id), l);
         }
-        while (editColors.size() > lights.size()) {
-            int last = editColors.size() - 1;
-            editColors.remove(last);
-            hexInputs.remove(last);
-            editDirections.remove(last);
-            editPositions.remove(last);
-            editIntensities.remove(last);
-        }
-        if (!lights.isEmpty() && selectedLight >= lights.size()) {
-            selectedLight = lights.size() - 1;
+        edits.keySet().removeIf(k -> !activeIds.contains(k));
+        if (selectedLightId >= 0 && !activeIds.contains(selectedLightId)) {
+            selectedLightId = lights.isEmpty() ? -1 : lightIds.getOrDefault(lights.get(0), -1);
         }
     }
 
@@ -595,12 +604,36 @@ public class ShadowForge {
     private void addLight(Light light) {
         lightEnv.add(light);
         lightStack.push(light);
-        System.out.printf("+Light (%d total) type=%s%n", lightEnv.size(), light.type);
+        int id = nextLightId++;
+        lightIds.put(light, id);
+        edits.put(id, new LightEdit(id));
+        syncEditFromLight(edits.get(id), light);
+        System.out.printf("+Light #%d (%d total) type=%s%n", id, lightEnv.size(), light.type);
+    }
+
+    private void syncEditFromLight(LightEdit e, Light l) {
+        e.color[0] = l.color.x; e.color[1] = l.color.y; e.color[2] = l.color.z;
+        e.hex = rgbToHex(l.color.x, l.color.y, l.color.z);
+        if (!e.hexActive) e.hexBuf = new ImString(e.hex, 16);
+        e.intensity = l.intensity;
+        if (l.type == LightType.POINT) {
+            e.dir[0] = 0; e.dir[1] = 0;
+        } else {
+            Vector3f d = new Vector3f(l.direction).normalize();
+            e.dir[0] = (float) Math.toDegrees(Math.atan2(d.x, d.z));
+            e.dir[1] = (float) Math.toDegrees(Math.asin(d.y));
+        }
+        e.pos[0] = l.position.x; e.pos[1] = l.position.y; e.pos[2] = l.position.z;
     }
 
     private void undoLastLight() {
         if (lightStack.isEmpty()) { System.out.println("Undo: nothing to undo"); return; }
         Light removed = lightStack.pop();
+        Integer id = lightIds.remove(removed);
+        if (id != null) {
+            edits.remove(id);
+            if (selectedLightId == id) selectedLightId = -1;
+        }
         lightEnv.remove(removed);
         System.out.printf("-Light (undo) => %d remaining%n", lightEnv.size());
     }
@@ -609,12 +642,10 @@ public class ShadowForge {
         int count = lightEnv.size();
         lightStack.clear();
         lightEnv.clear();
-        selectedLight = -1;
-        editColors.clear();
-        hexInputs.clear();
-        editDirections.clear();
-        editPositions.clear();
-        editIntensities.clear();
+        lightIds.clear();
+        edits.clear();
+        selectedLightId = -1;
+        nextLightId = 1;
         System.out.printf("Cleared %d lights%n", count);
     }
 
@@ -627,6 +658,7 @@ public class ShadowForge {
 
     private void resetAllState() {
         clearAllLights();
+        nextLightId = 1;
         lightEnv.setAmbient(defaultAmbient.x, defaultAmbient.y, defaultAmbient.z);
         cameraPos.set(initCameraPos);
         cameraTarget.set(initCameraTarget);
@@ -680,7 +712,7 @@ public class ShadowForge {
         try (var files = Files.list(dir)) {
             depthMapFiles = files
                     .filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".png"))
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".png")||p.getFileName().toString().toLowerCase().endsWith(".jpg"))
                     .sorted(Comparator.comparing(Path::getFileName, Comparator.naturalOrder()))
                     .toList();
         } catch (Exception e) {
@@ -765,11 +797,29 @@ public class ShadowForge {
         int w = depthWidth;
         int h = depthHeight;
         int vc = w * h;
-        int qc = (w - 1) * (h - 1);
-        int ic = qc * 6;
+
+        boolean[] keep = new boolean[vc];
+        for (int i = 0; i < vc; i++) {
+            keep[i] = currentDepthData[i] > depthCutoff;
+        }
+
+        List<Integer> idxList = new ArrayList<>();
+        for (int z = 0; z < h - 1; z++) {
+            for (int x = 0; x < w - 1; x++) {
+                int tl = z * w + x;
+                int tr = z * w + (x + 1);
+                int bl = (z + 1) * w + x;
+                int br = (z + 1) * w + (x + 1);
+                if (keep[tl] && keep[tr] && keep[bl] && keep[br]) {
+                    idxList.add(tl); idxList.add(bl); idxList.add(tr);
+                    idxList.add(tr); idxList.add(bl); idxList.add(br);
+                }
+            }
+        }
 
         float[] vertices = new float[vc * 8];
-        int[] indices = new int[ic];
+        int[] indices = new int[idxList.size()];
+        for (int i = 0; i < idxList.size(); i++) indices[i] = idxList.get(i);
 
         float ox = -(w - 1) * CELL_SIZE * 0.5f;
         float oz = -(h - 1) * CELL_SIZE * 0.5f;
@@ -781,7 +831,7 @@ public class ShadowForge {
                 float depth = currentDepthData[z * w + x];
 
                 vertices[vi8] = ox + x * CELL_SIZE;
-                float d = depth < depthCutoff ? 0f : depth;
+                float d = depth > depthCutoff ? depth : 0f;
                 vertices[vi8 + 1] = d * HEIGHT_SCALE;
                 vertices[vi8 + 2] = oz + z * CELL_SIZE;
                 vertices[vi8 + 3] = (float) x / (w - 1);
@@ -803,24 +853,12 @@ public class ShadowForge {
             }
         }
 
-        int idx = 0;
-        for (int z = 0; z < h - 1; z++) {
-            for (int x = 0; x < w - 1; x++) {
-                int tl = z * w + x;
-                int tr = z * w + (x + 1);
-                int bl = (z + 1) * w + x;
-                int br = (z + 1) * w + (x + 1);
-                indices[idx++] = tl; indices[idx++] = bl; indices[idx++] = tr;
-                indices[idx++] = tr; indices[idx++] = bl; indices[idx++] = br;
-            }
-        }
-
         VertexLayout layout = new VertexLayout().add(0, 3).add(1, 2).add(2, 3);
         MeshData data = new MeshData(vertices, indices, layout);
 
         terrainMesh = foolsEngine.serviceFactory.getMesh();
         terrainMesh.upload(data);
-        System.out.printf("Terrain: %d verts, %d tris%n", vc, indices.length / 3);
+        System.out.printf("Terrain: %d verts, %d tris (cutoff=%.2f)%n", vc, indices.length / 3, depthCutoff);
     }
 
     private void nextDepthMap() {

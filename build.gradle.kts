@@ -1,4 +1,5 @@
 plugins {
+    id("java-library")
     id("application")
 }
 
@@ -33,8 +34,8 @@ dependencies {
     implementation(files(foolsEnginePath))
     implementation("org.joml:joml:1.10.5")
 
-    implementation("io.github.spair:imgui-java-binding:$imguiVersion")
-    implementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
+    api("io.github.spair:imgui-java-binding:$imguiVersion")
+    api("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
         exclude(group = "org.lwjgl")
     }
     runtimeOnly("io.github.spair:imgui-java-natives-$lwjglNatives:$imguiVersion")
