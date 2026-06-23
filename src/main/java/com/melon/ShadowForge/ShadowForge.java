@@ -103,6 +103,8 @@ public class ShadowForge {
 
     private float depthCutoff;
 
+    float[] BGBuffer = new float[4];
+
     public static void main(String[] args) {
         new ShadowForge().run();
     }
@@ -229,6 +231,8 @@ public class ShadowForge {
         long lastTime = System.nanoTime();
         boolean showPanel = true;
 
+        scene.setBackGroundColor(0.0f,0.0f,0.0f,1.0f);
+
         while (!win.shouldClose()) {
             long currentTime = System.nanoTime();
             float deltaTime = (currentTime - lastTime) / 1e9f;
@@ -290,7 +294,7 @@ public class ShadowForge {
             scene.setTextureManager(textureManager);
             scene.setLighting(lightEnv);
             scene.setCamera(camera);
-            scene.setBackGroundColor(0.1f, 0.05f, 0.05f, 1.0f);
+            scene.setBackGroundColor(BGBuffer[0],BGBuffer[1],BGBuffer[2],BGBuffer[3]);
             scene.submit(new RenderCommand(terrainMesh, material, new Matrix4f()));
 
             frame.render(scene);
@@ -340,6 +344,26 @@ public class ShadowForge {
         if (ImGui.sliderFloat("Cutoff##sl", cutoffBuf, 0f, 1f)) {
             depthCutoff = cutoffBuf[0];
             buildTerrainMesh();
+        }
+
+        ImGui.text(String.format("BackGroundColor: (%.3f, %.3f, %.3f,%.3f)",
+                scene.getBgR(), scene.getBgG(), scene.getBgB(),scene.getBgA()));
+
+        float[] r = new float[]{BGBuffer[0]};
+        float[] g = new float[]{BGBuffer[1]};
+        float[] b = new float[]{BGBuffer[2]};
+        float[] a = new float[]{BGBuffer[3]};
+        if(ImGui.sliderFloat("BGR", r, 0f, 1f)){
+            BGBuffer[0]=r[0];
+        }
+        if(ImGui.sliderFloat("BGG", g, 0f, 1f)){
+            BGBuffer[1]=g[0];
+        }
+        if(ImGui.sliderFloat("BGB", b, 0f, 1f)){
+            BGBuffer[2]=b[0];
+        }
+        if(ImGui.sliderFloat("BGA", a, 0f, 1f)){
+            BGBuffer[3]=a[0];
         }
 
         ImGui.text(String.format("Ambient: (%.3f, %.3f, %.3f)",
@@ -392,11 +416,11 @@ public class ShadowForge {
             ImGui.text("F12    Screenshot");
             ImGui.text("R      Reset All State");
             ImGui.text("M      Toggle Panel");
-            ImGui.text("=/MW   Speed Up/Down");
+            ImGui.text("MW   Speed Up/Down");
             ImGui.text("WASD   Move Camera");
             ImGui.text("RMB    Toggle Cursor Capture");
         }
-
+        ImGui.setWindowFontScale((ImGui.getWindowSize().x+ImGui.getWindowSize().y)/1000f);
         ImGui.end();
     }
 

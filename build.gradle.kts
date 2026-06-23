@@ -10,7 +10,7 @@ val lwjglNatives = project.properties["lwjglNatives"] as? String ?: "windows"
 val lwjglVersion = "3.4.1"
 val imguiVersion = "1.92.0"
 val foolsEnginePath = project.properties["foolsEngineJar"] as? String
-    ?: "C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.7.jar"
+    ?: "C:/Users/melon_444/Documents/java_work/foolsEngine/build/libs/foolsEngine-0.0.8.jar"
 
 application {
     mainClass.set("com.melon.ShadowForge.ShadowForge")
@@ -18,6 +18,7 @@ application {
 
 repositories {
     mavenCentral()
+    maven("https://jitpack.io/")
 }
 
 dependencies {
@@ -34,6 +35,7 @@ dependencies {
     implementation(files(foolsEnginePath))
     implementation("org.joml:joml:1.10.5")
 
+    api(files(foolsEnginePath))
     api("io.github.spair:imgui-java-binding:$imguiVersion")
     api("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
         exclude(group = "org.lwjgl")
