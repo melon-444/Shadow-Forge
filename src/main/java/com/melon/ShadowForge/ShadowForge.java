@@ -244,48 +244,50 @@ public class ShadowForge {
             Vector3f right = new Vector3f(forward).cross(worldUp).normalize();
             Vector3f lookDir = new Vector3f();
 
-            if (input.isActionDown(moveForward)) cameraPos.add(new Vector3f(forward).mul(moveSpeed * deltaTime));
-            if (input.isActionDown(moveBackward)) cameraPos.sub(new Vector3f(forward).mul(moveSpeed * deltaTime));
-            if (input.isActionDown(moveRight)) cameraPos.add(new Vector3f(right).mul(moveSpeed * deltaTime));
-            if (input.isActionDown(moveLeft)) cameraPos.sub(new Vector3f(right).mul(moveSpeed * deltaTime));
-            if (input.isActionDown(moveUp)) cameraPos.add(new Vector3f(worldUp).mul(moveSpeed * deltaTime));
-            if (input.isActionDown(moveDown)) cameraPos.sub(new Vector3f(worldUp).mul(moveSpeed * deltaTime));
+            boolean imguiWantsKb = ImGui.getIO().getWantCaptureKeyboard();
+            boolean imguiWantsMouse = ImGui.getIO().getWantCaptureMouse();
+            if (!imguiWantsKb && input.isActionDown(moveForward)) cameraPos.add(new Vector3f(forward).mul(moveSpeed * deltaTime));
+            if (!imguiWantsKb && input.isActionDown(moveBackward)) cameraPos.sub(new Vector3f(forward).mul(moveSpeed * deltaTime));
+            if (!imguiWantsKb && input.isActionDown(moveRight)) cameraPos.add(new Vector3f(right).mul(moveSpeed * deltaTime));
+            if (!imguiWantsKb && input.isActionDown(moveLeft)) cameraPos.sub(new Vector3f(right).mul(moveSpeed * deltaTime));
+            if (!imguiWantsKb && input.isActionDown(moveUp)) cameraPos.add(new Vector3f(worldUp).mul(moveSpeed * deltaTime));
+            if (!imguiWantsKb && input.isActionDown(moveDown)) cameraPos.sub(new Vector3f(worldUp).mul(moveSpeed * deltaTime));
 
             if (input.isActionPressed(nextImage)) nextDepthMap();
             if (input.isActionPressed(prevImage)) prevDepthMap();
-            if (input.isActionPressed(switchMouseMode)) toggleCursorMode(win);
+            if (!imguiWantsMouse && input.isActionPressed(switchMouseMode)) toggleCursorMode(win);
 
-            if (input.getActionAxis1D(speedUp) > 0.0) { moveSpeed = Math.min(moveSpeed * 1.5f, 500f); printSpeed(); }
-            if (input.getActionAxis1D(speedDown) < 0.0) { moveSpeed = Math.max(moveSpeed / 1.5f, 0.1f); printSpeed(); }
+            if (!imguiWantsKb && input.getActionAxis1D(speedUp) > 0.0) { moveSpeed = Math.min(moveSpeed * 1.5f, 500f); printSpeed(); }
+            if (!imguiWantsKb && input.getActionAxis1D(speedDown) < 0.0) { moveSpeed = Math.max(moveSpeed / 1.5f, 0.1f); printSpeed(); }
             if (input.isActionPressed(togglePanel)) { showPanel = !showPanel; }
-            if (input.isActionPressed(screenshot)) { saveScreenshot(); }
-            if (input.isActionPressed(resetAll)) { resetAllState(); }
+            if (!imguiWantsKb && input.isActionPressed(screenshot)) { saveScreenshot(); }
+            if (!imguiWantsKb && input.isActionPressed(resetAll)) { resetAllState(); }
 
-            updateCameraLook(input, lookDelta, win, lookDir);
+            updateCameraLook(input, lookDelta, win, lookDir, !imguiWantsMouse);
 
-            if (input.isActionPressed(spawnDirLight))
+            if (!imguiWantsKb && input.isActionPressed(spawnDirLight))
                 addLight(Light.directional(randColor(), new Vector3f(lookDir)));
-            if (input.isActionPressed(spawnPointLight))
+            if (!imguiWantsKb && input.isActionPressed(spawnPointLight))
                 addLight(Light.point(randColor(), new Vector3f(cameraPos), 3.0f));
-            if (input.isActionPressed(spawnSpotLight))
+            if (!imguiWantsKb && input.isActionPressed(spawnSpotLight))
                 addLight(Light.spot(randColor(), new Vector3f(lookDir), new Vector3f(cameraPos), 10f, 10f, 2.0f));
-            if (input.isActionPressed(spawnShadowDirLight)) {
+            if (!imguiWantsKb && input.isActionPressed(spawnShadowDirLight)) {
                 enableShadowsOnce();
                 Light base = Light.directional(randColor(), lookDir, 1.0f);
                 addLight(lightEnv.enableDirLightShadow(base, camera));
             }
-            if (input.isActionPressed(spawnShadowSpotLight)) {
+            if (!imguiWantsKb && input.isActionPressed(spawnShadowSpotLight)) {
                 enableShadowsOnce();
                 Light base = Light.spot(randColor(), lookDir, new Vector3f(cameraPos), 10f, 10f, 2.0f);
                 addLight(lightEnv.enableSpotLightShadow(base, SPOT_SHADOW_NEAR));
             }
-            if (input.isActionPressed(undoLight)) undoLastLight();
-            if (input.isActionPressed(clearLights)) clearAllLights();
+            if (!imguiWantsKb && input.isActionPressed(undoLight)) undoLastLight();
+            if (!imguiWantsKb && input.isActionPressed(clearLights)) clearAllLights();
 
-            if (input.isActionPressed(ambientUp)) { lightEnv.getAmbient().mul(1.1f); printAmbient(); }
-            if (input.isActionPressed(ambientDown)) { lightEnv.getAmbient().mul(0.9f); printAmbient(); }
+            if (!imguiWantsKb && input.isActionPressed(ambientUp)) { lightEnv.getAmbient().mul(1.1f); printAmbient(); }
+            if (!imguiWantsKb && input.isActionPressed(ambientDown)) { lightEnv.getAmbient().mul(0.9f); printAmbient(); }
 
-            if (input.isActionDown(exit)) break;
+            if (!imguiWantsKb && input.isActionDown(exit)) break;
 
             cameraTarget = new Vector3f(cameraPos).add(lookDir);
             camera.view.identity().lookAt(cameraPos, cameraTarget, worldUp);
@@ -420,7 +422,7 @@ public class ShadowForge {
             ImGui.text("WASD   Move Camera");
             ImGui.text("RMB    Toggle Cursor Capture");
         }
-        ImGui.setWindowFontScale((ImGui.getWindowSize().x+ImGui.getWindowSize().y)/1000f);
+        ImGui.setWindowFontScale((ImGui.getWindowSize().x/1000f+ImGui.getWindowSize().y/700f));
         ImGui.end();
     }
 
@@ -434,6 +436,8 @@ public class ShadowForge {
         if (!storedHex.equals(e.hexBuf.get()) && !e.hexActive) {
             e.hexBuf = new ImString(storedHex, 16);
         }
+        ImGui.text("#");
+        ImGui.sameLine();
         if (ImGui.inputText("Hex Color" + sid, e.hexBuf, ImGuiInputTextFlags.CharsHexadecimal | ImGuiInputTextFlags.EnterReturnsTrue)) {
             e.hex = e.hexBuf.get();
             float[] parsed = parseHex(e.hex);
@@ -456,6 +460,18 @@ public class ShadowForge {
         ImGui.colorButton("preview" + sid, new float[]{e.color[0], e.color[1], e.color[2], 1f});
 
         boolean changed = false;
+        float[] rSl = new float[]{e.color[0]};
+        float[] gSl = new float[]{e.color[1]};
+        float[] bSl = new float[]{e.color[2]};
+        if (ImGui.sliderFloat("R" + sid, rSl, 0f, 1f)) { e.color[0] = rSl[0]; changed = true; }
+        if (ImGui.sliderFloat("G" + sid, gSl, 0f, 1f)) { e.color[1] = gSl[0]; changed = true; }
+        if (ImGui.sliderFloat("B" + sid, bSl, 0f, 1f)) { e.color[2] = bSl[0]; changed = true; }
+        if (changed) {
+            e.hex = rgbToHex(e.color[0], e.color[1], e.color[2]);
+            if (!e.hexActive) e.hexBuf = new ImString(e.hex, 16);
+            replaceLight(l);
+            changed = false;
+        }
 
         if (l.type != LightType.POINT) {
             ImFloat yawV = new ImFloat(e.dir[0]);
@@ -489,7 +505,7 @@ public class ShadowForge {
             replaceLight(l);
         }
         float[] iSl = new float[]{e.intensity};
-        if (ImGui.sliderFloat("Intensity##sl" + sid, iSl, 0.01f, 20f)) {
+        if (ImGui.sliderFloat("Intensity##sl" + sid, iSl, 0.01f, 100f)) {
             e.intensity = Math.max(0.01f, iSl[0]);
             replaceLight(l);
         }
@@ -577,7 +593,7 @@ public class ShadowForge {
     }
 
     private static float[] parseHex(String hex) {
-        String h = hex.replace("#", "").trim();
+        String h = hex.trim();
         if (h.length() < 6) return null;
         try {
             int rgb = Integer.parseInt(h.substring(0, 6), 16);
@@ -595,7 +611,7 @@ public class ShadowForge {
         int ir = Math.max(0, Math.min(255, (int) (r * 255)));
         int ig = Math.max(0, Math.min(255, (int) (g * 255)));
         int ib = Math.max(0, Math.min(255, (int) (b * 255)));
-        return String.format("#%02X%02X%02X", ir, ig, ib);
+        return String.format("%02X%02X%02X", ir, ig, ib);
     }
 
     private static String typeLabel(LightType t) {
@@ -607,8 +623,8 @@ public class ShadowForge {
         }
     }
 
-    private void updateCameraLook(InputManager input, Action lookDelta, Window win, Vector3f lookDirOut) {
-        Vector2f mouseDelta = win.getCursorMode() == CursorMode.DISABLED
+    private void updateCameraLook(InputManager input, Action lookDelta, Window win, Vector3f lookDirOut, boolean enabled) {
+        Vector2f mouseDelta = (enabled && win.getCursorMode() == CursorMode.DISABLED)
                 ? input.getActionAxis2DDelta(lookDelta)
                 : new Vector2f(0.0f);
         yaw -= mouseDelta.x * lookSensitivity;

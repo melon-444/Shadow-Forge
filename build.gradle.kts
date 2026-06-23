@@ -32,7 +32,7 @@ dependencies {
     runtimeOnly("org.lwjgl", "lwjgl-opengl",   classifier = "natives-$lwjglNatives")
     runtimeOnly("org.lwjgl", "lwjgl-stb",      classifier = "natives-$lwjglNatives")
 
-    implementation(files(foolsEnginePath))
+    implementation(files(foolsEnginePath, foolsEnginePath.replace(".jar", "-sources.jar")))
     implementation("org.joml:joml:1.10.5")
 
     api(files(foolsEnginePath))
